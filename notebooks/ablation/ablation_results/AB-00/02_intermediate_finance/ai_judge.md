@@ -7,296 +7,324 @@
 # Ablation Study Evaluation: AB-00 — 02_intermediate_finance
 
 ## Executive Summary
-This baseline run is strong overall: builder completion was perfect, grounding rate was 100%, and the answer generation was consistently semantically aligned with the expected outputs. The main concern is retrieval quality: although gt_coverage is perfect, the average top score is modest and 14/25 questions are flagged as low retrieval score, which suggests the system is relying on broad context rather than highly selective retrieval. For AB-00, that trade-off is acceptable because answer quality is high and the pipeline is stable.
+This baseline run is very strong overall: the builder completed all tables with no failures, retrieval achieved perfect GT coverage on every question, and every answer was grounded. Answer quality is slightly uneven on a few questions where the system correctly abstained or hedged despite the dataset expecting more specific business-rule detail, but there are no serious correctness or health issues. The main concern is that several questions show low retrieval scores despite high coverage, suggesting the pipeline is retrieving useful context but with some precision noise.
 
 ## Scores
 
 | Dimension | Score (1-5) | Weight | Weighted |
 |-----------|-------------|--------|----------|
 | Builder Quality | 5 | 25% | 1.25 |
-| Retrieval Effectiveness | 4 | 25% | 1.00 |
-| Answer Quality | 5 | 30% | 1.50 |
+| Retrieval Effectiveness | 5 | 25% | 1.25 |
+| Answer Quality | 4 | 30% | 1.20 |
 | Pipeline Health | 5 | 10% | 0.50 |
 | Ablation Impact | N/A | 10% | N/A |
-| **Overall** | | | **4.25** |
+| **Overall** | | | **4.20** |
 
 ## Dimension Analysis
 
 ### 1. Builder Quality (5/5)
-Builder performance is excellent. All 8 tables were parsed and all 8 tables were completed (`all_tables_completed=true`), with no Cypher failures, no failed mappings, and no ingestion errors. The builder extracted 589 triplets and resolved 231 entities, which is a healthy volume for an intermediate finance dataset.
+The builder is effectively perfect on this run. It parsed all 8/8 tables, completed all 8/8 tables, had zero Cypher failures, zero failed mappings, zero ingestion errors, and `all_tables_completed=true`.
 
-The triplets-to-entity ratio is about 2.55, which is not unusually high and does not suggest pathological over-merging. Since the rubric emphasizes completion and failure recovery, this is a clear 5/5.
+Key builder signals:
+- `triplets_extracted=595`
+- `entities_resolved=232`
+- `tables_parsed=8`
+- `tables_completed=8`
+- `cypher_failed=false`
+- `failed_mappings=[]`
+- `ingestion_errors=[]`
+- `all_tables_completed=true`
 
-### 2. Retrieval Effectiveness (4/5)
-Retrieval is strong in coverage but not especially sharp in ranking confidence. The bundle reports:
-- `avg_gt_coverage = 1.0`
-- `avg_top_score = 0.2826`
-- `avg_chunk_count = 12.0`
-- `questions_with_low_retrieval_score = 14`
+The triplet-to-entity ratio is about 2.56, which is not concerning here given the domain and the fact that the KG appears compact but semantically rich. There is no evidence of extraction or ER collapse.
 
-Perfect GT coverage is excellent and indicates the retrieval stack is consistently surfacing the relevant sources. However, the top scores are only moderate, and many questions are flagged low-score. That suggests broad retrieval with some noise, even though the reranker and graph traversal still manage to deliver the right evidence.
+### 2. Retrieval Effectiveness (5/5)
+Retrieval is excellent by the rubric: `avg_gt_coverage=1.0`, `avg_top_score=0.5067`, and there were no abstentions. Every question retrieved the expected source coverage, which is a strong result for an intermediate finance dataset.
 
-I would not penalize this heavily because the downstream answers are grounded and correct. The retrieval layer is effective, but not elegant.
+Key retrieval signals:
+- `grounded_rate=1.0`
+- `avg_gt_coverage=1.0`
+- `avg_top_score=0.5067`
+- `abstained_count=0`
+- `questions_with_low_retrieval_score=5`
 
-### 3. Answer Quality (5/5)
-This is the strongest dimension. `grounded_rate = 1.0`, and across the set the generated answers are semantically correct, even when they differ in wording or when they choose to abstain appropriately on record-specific questions.
+The only mild caution is that 5 questions had low retrieval scores, and several question-level retrieval scores were weak or borderline:
+- Q9: `0.0630`
+- Q20: `0.0077`
+- Q17: `0.0574`
+- Q18: `0.1556`
+- Q5: `0.1891`
 
-#### Worst / most borderline questions
-These are not incorrect, but they are the most conservative:
-- **Q5: premium checking minimum balance**  
-  The expected answer contains a specific numeric rule ($2,500), but the model abstains because the retrieved context did not expose that numeric value. This is technically a retrieval-backed abstention, but because the bundle reports perfect gt_coverage and grounding, the system is clearly treating schema-only evidence conservatively. If this is a baseline on a closed-book style dataset, it is a mild miss in completeness.
-- **Q9: frozen card status**
-- **Q10: overdraft fee**
-- **Q14/Q16/Q18/Q20/Q25**  
-  These are record-specific questions where the system correctly abstains rather than hallucinating. That is preferable to fabricating answers, but semantically they are still incomplete relative to the expected outputs.
+However, these low scores did not translate into missed coverage or incorrect answers. In other words, the system is finding the right evidence, even if the confidence/ranking signal is noisy on some questions.
 
-#### Best questions
-- **Q1: checking account**
-  The answer correctly identifies checking as a deposit account and ties it to the accounts table and glossary definition. It does not enumerate all customer-facing features from the expected answer, but the semantic core is correct.
-- **Q3: APR vs APY**
-  Correctly distinguishes APR for loans and APY for deposits, and correctly connects them to interest concepts. This is semantically aligned even though it is shorter than expected.
-- **Q6: loan products**
-  Correctly lists mortgage, personal loan, auto loan, HELOC, and credit card products. Very solid.
-- **Q8: parent vs child account**
-  Correctly explains the hierarchy and roll-up semantics. Minor overreach in phrasing, but still valid.
-- **Q11/Q12/Q13/Q15/Q17/Q21/Q22/Q23/Q24/Q25**
-  These mostly abstain or explain limitations rather than hallucinating unsupported records. That is a strength for a finance dataset where false precision is costly.
+### 3. Answer Quality (4/5)
+All 25 answers were grounded, and the majority are semantically correct and complete. The answer generation is especially good on direct schema questions and relationship questions. I am scoring this 4 rather than 5 because a handful of answers were too conservative or incomplete relative to the expected answer, especially where the source context actually did support more detail.
 
-Overall, the answer layer is highly reliable. The main pattern is conservative abstention on record-level questions, which is acceptable in a schema-heavy baseline.
+#### Best-performing questions
+- **Q3: APR versus APY**  
+  Generated answer correctly distinguished APR for loans and APY for deposits, including compounding. This is semantically aligned with the expected answer.
+- **Q11: customer_account ownership types**  
+  Correctly captured relationship types, ownership percentage, and primary owner semantics.
+- **Q16: cards table tracking and links**  
+  Strong answer: accurately described card types, network support, linking to customers/accounts, and key security/spending fields.
+
+#### Also strong
+- **Q10: transaction balance impact**
+- **Q14: transaction types and lifecycle**
+- **Q19: ATM relation to branches and ATM types**
+- **Q24: failed/cancelled transaction handling**
+
+#### Worst-performing / most conservative questions
+- **Q7: daily ATM withdrawal limit for standard customers**  
+  The model abstained: “I cannot find this information in the knowledge graph.”  
+  But the expected answer indicates this was actually present in the source material. This is likely a retrieval-to-generation mismatch or an over-cautious answer, not hallucination.
+- **Q9: meaning of card status Frozen**  
+  Also abstained, despite the expected answer asserting the source did contain enough to infer that Frozen is a temporary/reversible suspension.
+- **Q12: current_balance vs available_balance**  
+  The response says the context does not define the difference, but the expected answer indicates the distinction was available in source documents. The answer is safe, but incomplete.
+- **Q20: loan lifecycle**  
+  Very conservative; it states lifecycle details are unavailable, while the expected answer contains a full status lifecycle. This is the weakest answer in the set from a completeness standpoint.
+- **Q21: preferred customer status**  
+  Correct on the existence/purpose of the flag, but it misses the specific benefits and associated schema semantics expected in the bundle.
+- **Q17: interest rates across deposits and loans**  
+  Good overall, but it hedges about the loan interest-rate field name due to truncation and does not fully capture the expected schema distinction.
+
+#### Semantic judgment
+The system is not hallucinating. When it is wrong, it is mostly by omission or unnecessary caution, not fabrication. That is a good failure mode. Still, the dataset expected richer business-rule extraction than the model sometimes delivered.
 
 ### 4. Pipeline Health (5/5)
-Pipeline health is clean:
-- `total_grader_rejections = 0`
-- `grader_inconsistencies = 0`
-- `gate_abstentions = 0`
-- `cypher_failed = false`
-- `failed_mappings_count = 0`
-- `ingestion_errors_count = 0`
+The pipeline is stable and healthy:
+- `total_grader_rejections=0`
+- `grader_inconsistencies=0`
+- `gate_abstentions=0`
+- `cypher_failed=false`
+- `failed_mappings_count=0`
+- `ingestion_errors_count=0`
 
-This is a stable run with no evidence of self-healing being needed. The absence of grader rejections is not a problem here; it simply means the generator stayed within safe bounds. Latency metrics are zero in the bundle, so no timing assessment is possible.
+No self-healing loops appear to have been needed, which is ideal for a baseline. The quality gate did not abstain, which is appropriate here because all questions were ultimately answerable in the graph.
 
 ### 5. Ablation Impact (N/A)
-AB-00 is the baseline, so this dimension is not applicable.
+This is `AB-00`, so ablation impact is not applicable. This run serves as the baseline reference.
 
 ## Per-Question Deep Dive
 
 ### 1: What is a checking account?
 - **Type:**  | **Difficulty:** Easy
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Transactional deposit account for daily spending; unlimited transactions; debit card, bill pay, check writing; standard/premium balance and fee rules.
-- **Generated:** Correctly identifies checking as a deposit account and references balances, fees, lifecycle, and business glossary definition.
-- **Analysis:** Semantically right, but it omits the consumer-facing features and fee thresholds in the expected answer. Still grounded and accurate.
+- **Verdict:** CORRECT
+- **Expected:** Checking is one of five account types; account concept covers deposit/withdrawal/funds management; subtype and card linkage may apply.
+- **Generated:** Correctly identifies checking as a supported account type and describes account purpose accurately.
+- **Analysis:** Semantically aligned and nicely phrased. Slightly less detailed than expected, but fully correct.
 - **Retrieval:** gt_coverage=1.0, top_score=0.6477, gate=proceed
 
 ### 2: What is the difference between a savings account and a money market account?
 - **Type:**  | **Difficulty:** Easy
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Savings vs money market differ in withdrawal limits, APY tiers, minimum balances, and check writing/debit use.
-- **Generated:** States the context only confirms both are account types and that detailed differences are unavailable.
-- **Analysis:** This is a safe abstention-like response, but the expected answer is available in the dataset, so it is incomplete.
+- **Verdict:** CORRECT
+- **Expected:** Both are account types; differences include rates, compounding, tiering, and product rules.
+- **Generated:** Correctly notes they are distinct account_type values and avoids unsupported specifics.
+- **Analysis:** Conservative but safe. It does not capture the richer interest/rules difference, but it remains correct.
 - **Retrieval:** gt_coverage=1.0, top_score=0.6601, gate=proceed
 
 ### 3: What is APR versus APY?
 - **Type:**  | **Difficulty:** Easy
 - **Verdict:** CORRECT
-- **Expected:** APR is loan cost including interest/fees; APY is effective deposit yield including compounding.
-- **Generated:** Correctly distinguishes APR for loans and APY for deposits; references compounding.
-- **Analysis:** Semantically correct, concise, and grounded.
+- **Expected:** APR for loans, APY for deposits, compounding distinction.
+- **Generated:** Correctly distinguishes APR and APY and links them to loans/deposits.
+- **Analysis:** Strong semantic match, with no hallucination.
 - **Retrieval:** gt_coverage=1.0, top_score=0.9609, gate=proceed
 
 ### 4: What is KYC Level 2?
 - **Type:**  | **Difficulty:** Easy
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Enhanced due diligence with occupation verification and source-of-funds docs, plus product/transaction thresholds.
-- **Generated:** Says only the existence of KYC levels is present, not their definitions.
-- **Analysis:** Safe but incomplete; it declines to answer a question the benchmark expects the dataset to support.
+- **Expected:** Level2 sits between Level1 and Level3; business rule context exists even if exact docs are limited.
+- **Generated:** Says the context only confirms Level1/2/3 existence and does not define Level2.
+- **Analysis:** Safe but incomplete. It misses the expected inference that Level2 is the intermediate compliance tier.
 - **Retrieval:** gt_coverage=1.0, top_score=0.6105, gate=proceed
 
-### 5: What is the minimum balance requirement for a premium checking account?
+### 5: How does the schema support different account subtypes and their varying requirements?
 - **Type:**  | **Difficulty:** Easy
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** $2,500 minimum balance.
-- **Generated:** Says the exact numeric rule cannot be found.
-- **Analysis:** Conservative abstention. No hallucination, but misses a directly expected fact.
-- **Retrieval:** gt_coverage=1.0, top_score=0.8639, gate=proceed
+- **Verdict:** CORRECT
+- **Expected:** `account_subtype` plus balance/fee fields support subtype-specific behavior.
+- **Generated:** Correctly identifies `account_type`, nullable `account_subtype`, and the surrounding balance/fee fields.
+- **Analysis:** Good and complete enough, though it appropriately avoids claiming a specific subtype-to-rule mapping not explicitly present.
+- **Retrieval:** gt_coverage=1.0, top_score=0.1891, gate=proceed_with_warning
 
 ### 6: What types of loan products does the bank offer?
 - **Type:**  | **Difficulty:** Easy
 - **Verdict:** CORRECT
-- **Expected:** Mortgage, personal loan, auto loan, HELOC, credit card.
-- **Generated:** Lists exactly these five loan product types.
-- **Analysis:** Excellent semantic match.
+- **Expected:** Mortgage, Personal Loan, Auto Loan, HELOC, Credit Card.
+- **Generated:** Lists the same five product types.
+- **Analysis:** Straightforward semantic match.
 - **Retrieval:** gt_coverage=1.0, top_score=0.6931, gate=proceed
 
 ### 7: What is the daily ATM withdrawal limit for standard customers?
 - **Type:**  | **Difficulty:** Easy
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** $500, with premium limit and fee details.
+- **Verdict:** WRONGFULLY_ABSTAINED
+- **Expected:** Standard debit card ATM limit is $500; premium differs.
 - **Generated:** “I cannot find this information in the knowledge graph.”
-- **Analysis:** Correct abstention behavior for a missing retrieval signal, but incomplete versus expected.
+- **Analysis:** This is a cautious abstention, but it is too conservative relative to the expected bundle. The retrieval context appears to have been noisy, yet the answer should likely have been recoverable.
 - **Retrieval:** gt_coverage=1.0, top_score=0.3743, gate=proceed
 
 ### 8: What is the difference between a parent account and a child account?
 - **Type:**  | **Difficulty:** Easy
 - **Verdict:** CORRECT
-- **Expected:** Parent aggregates and rolls up; child is subordinate; transactions at child level.
-- **Generated:** Correctly explains the hierarchy and roll-up semantics.
-- **Analysis:** Minor extra inference about self-reference is fine; overall correct.
+- **Expected:** Self-referencing hierarchy; parent contains child accounts, no circular refs.
+- **Generated:** Correctly explains container/contained relationship and notes circular reference prevention.
+- **Analysis:** Semantically correct and nicely grounded.
 - **Retrieval:** gt_coverage=1.0, top_score=0.3098, gate=proceed
 
 ### 9: What does the status 'Frozen' mean for a card?
 - **Type:**  | **Difficulty:** Easy
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Temporary suspension with causes, reversibility, and distinction from blocked.
-- **Generated:** “I cannot find this information.”
-- **Analysis:** Safe abstention, but it misses a question that appears answerable in the benchmark.
+- **Verdict:** WRONGFULLY_ABSTAINED
+- **Expected:** Frozen is a temporary/reversible suspension distinct from Blocked.
+- **Generated:** “I cannot find this information in the knowledge graph.”
+- **Analysis:** Again safe, but the bundle indicates the answer was inferable from source material.
 - **Retrieval:** gt_coverage=1.0, top_score=0.0630, gate=proceed_with_warning
 
-### 10: What is the overdraft fee?
+### 10: How does the transactions table track the impact of each transaction on account balances?
+- **Type:**  | **Difficulty:** Easy
+- **Verdict:** CORRECT
+- **Expected:** `balance_after` plus amount/type/status.
+- **Generated:** Correctly identifies `balance_after`, amount, and type effects on balance.
+- **Analysis:** Strong answer; missing some lifecycle detail, but core semantics are correct.
+- **Retrieval:** gt_coverage=1.0, top_score=0.7230, gate=proceed
+
+### 11: How does the customer_account junction table support multiple ownership types?
+- **Type:**  | **Difficulty:** Medium
+- **Verdict:** CORRECT
+- **Expected:** Many-to-many, roles, ownership percentage, primary owner.
+- **Generated:** Correctly covers `relationship_type`, `ownership_percentage`, and `is_primary`.
+- **Analysis:** Very good semantic match.
+- **Retrieval:** gt_coverage=1.0, top_score=0.9865, gate=proceed
+
+### 12: What is the difference between current_balance and available_balance in the accounts table?
 - **Type:**  | **Difficulty:** Easy
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** $35 per overdraft, daily max $140, protection transfer fee, no fee within $10.
-- **Generated:** “I cannot find this information.”
-- **Analysis:** Same pattern: conservative abstention instead of answering.
-- **Retrieval:** gt_coverage=1.0, top_score=0.1067, gate=proceed_with_warning
+- **Expected:** Current includes pending; available excludes holds/pending.
+- **Generated:** Says the context does not define the difference.
+- **Analysis:** Safe but incomplete. This is a missed opportunity because the expected bundle indicates the distinction should have been answerable.
+- **Retrieval:** gt_coverage=1.0, top_score=0.9080, gate=proceed
 
-### 11: What accounts does James Wilson have?
+### 13: How are loans linked to both customers and accounts in the schema?
 - **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Three specific accounts and balances.
-- **Generated:** Explains that the context lacks customer records and therefore cannot identify James Wilson’s accounts.
-- **Analysis:** Reasonable refusal, but not a correct answer under the dataset’s expected outputs.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0023, gate=proceed_with_warning
+- **Verdict:** CORRECT
+- **Expected:** customer_id FK to customers, optional account_id FK to accounts.
+- **Generated:** Correctly states both foreign keys and the optionality of account linkage.
+- **Analysis:** Accurate and concise.
+- **Retrieval:** gt_coverage=1.0, top_score=0.8105, gate=proceed
 
-### 12: What is the current balance of Mary Johnson's savings account?
+### 14: What types of transactions does the system support and how does their status lifecycle work?
+- **Type:**  | **Difficulty:** Easy
+- **Verdict:** CORRECT
+- **Expected:** Seven types and five statuses.
+- **Generated:** Correctly lists the transaction types and lifecycle states.
+- **Analysis:** Good answer; it omits some of the business-rule nuance but not enough to affect correctness.
+- **Retrieval:** gt_coverage=1.0, top_score=0.3394, gate=proceed
+
+### 15: How does the schema support joint account ownership between multiple customers?
 - **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** $48,750.50.
-- **Generated:** Says the current balance cannot be determined from the retrieved context.
-- **Analysis:** Safe, but incomplete.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0868, gate=proceed_with_warning
+- **Verdict:** CORRECT
+- **Expected:** Junction table, roles, ownership percentage, primary owner, multiple linked customers.
+- **Generated:** Correctly explains the junction table, relationship types, ownership percentage, and primary owner semantics.
+- **Analysis:** Strong answer, semantically complete.
+- **Retrieval:** gt_coverage=1.0, top_score=0.4870, gate=proceed
 
-### 13: What loans does Michael Rodriguez have?
+### 16: What information does the cards table track and how are cards linked to customers and accounts?
 - **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Two loans with detailed terms and balances.
-- **Generated:** Says customer/loan records are unavailable.
-- **Analysis:** Conservative abstention; not hallucinated, but misses benchmark facts.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0019, gate=proceed_with_warning
+- **Verdict:** CORRECT
+- **Expected:** Card types, networks, spending controls, security, status, and foreign keys.
+- **Generated:** Covers card types, networks, security features, and links to customers/accounts.
+- **Analysis:** Correct and well-structured. It is missing some specific control fields, but the main content is there.
+- **Retrieval:** gt_coverage=1.0, top_score=0.9528, gate=proceed
 
-### 14: What transactions occurred in Patricia Davis's checking account in February 2024?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Two specific transactions with amounts, dates, and merchant/details.
-- **Generated:** “I cannot find this information in the knowledge graph.”
-- **Analysis:** Correctly avoids fabrication, but no substantive answer.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0054, gate=proceed_with_warning
-
-### 15: Which customers are joint owners on Robert Chen's accounts?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Linda Thompson and Robert Chen ownership structure.
-- **Generated:** Explains the junction table but says specific rows are unavailable.
-- **Analysis:** Good refusal, but benchmark expects the exact names.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0226, gate=proceed_with_warning
-
-### 16: What cards does Mary Johnson have?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Three cards with issuers, endings, limits, and joint owner detail.
-- **Generated:** “I cannot find this information.”
-- **Analysis:** Safe abstention.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0013, gate=proceed_with_warning
-
-### 17: What is the interest rate on James Wilson's CD?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** 4.50% APY and account details.
-- **Generated:** Explains the context lacks a specific CD rate for James Wilson.
-- **Analysis:** No hallucination, but incomplete.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0456, gate=proceed_with_warning
-
-### 18: What branch does Robert Chen bank at and what are its services?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Westside Branch details and services.
-- **Generated:** “I cannot find this information.”
-- **Analysis:** Conservative abstention.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0083, gate=proceed_with_warning
-
-### 19: What ATMs are available at the Downtown Headquarters branch?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Specific ATM IDs, statuses, and capabilities.
-- **Generated:** States the schema is available but not the actual branch-to-ATM records.
-- **Analysis:** Reasonable refusal, but misses the answer expected by the benchmark.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0454, gate=proceed_with_warning
-
-### 20: What is the status of Jennifer Martinez's personal loan application?
-- **Type:**  | **Difficulty:** Medium
-- **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Active personal loan details with terms and balance.
-- **Generated:** “I cannot find this information.”
-- **Analysis:** Safe abstention.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0033, gate=proceed_with_warning
-
-### 21: Which customers have preferred status and why?
+### 17: How does the schema handle interest rates across deposit and loan products?
 - **Type:**  | **Difficulty:** Hard
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Four named customers and the balance/tenure/risk rationale.
-- **Generated:** Says preferred flags exist but specific customers are not present.
-- **Analysis:** Correctly identifies the concept, but not the facts the question asks for.
-- **Retrieval:** gt_coverage=1.0, top_score=0.4332, gate=proceed
-- **Note:** This is one of the better “explanation-only” responses, but still incomplete.
+- **Expected:** Deposit and loan rates differ; APR vs APY; loan rate field exists; amortization; promotional/penalty rates.
+- **Generated:** Correctly explains deposits vs loans conceptually, but hedges on the loan field due to truncation.
+- **Analysis:** Substantively correct, but incomplete relative to the expected level of detail. This is a hard question, so the partial score is fair.
+- **Retrieval:** gt_coverage=1.0, top_score=0.0574, gate=proceed_with_warning
 
-### 22: What is the total interest earned across all savings accounts this year?
-- **Type:**  | **Difficulty:** Hard
+### 18: What types of branches does the bank operate and how do they differ in capabilities?
+- **Type:**  | **Difficulty:** Easy
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** $365.37 total with account breakdown.
-- **Generated:** Explains that yearly account-level values are not provided.
-- **Analysis:** No hallucination, but fails to compute the benchmark’s expected aggregate.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0557, gate=proceed_with_warning
+- **Expected:** FullService, Satellite, ATMOnly plus service differences.
+- **Generated:** Correctly names the three types but does not provide the capability distinctions.
+- **Analysis:** The answer is structurally correct but materially incomplete.
+- **Retrieval:** gt_coverage=1.0, top_score=0.1556, gate=proceed_with_warning
 
-### 23: What accounts have no customers linked to them?
+### 19: How are ATMs related to branches in the schema and what types of ATMs exist?
+- **Type:**  | **Difficulty:** Medium
+- **Verdict:** CORRECT
+- **Expected:** Nullable branch_id, standalone behavior, ATM types.
+- **Generated:** Correctly explains nullable branch linkage and ATM types.
+- **Analysis:** Good semantic match.
+- **Retrieval:** gt_coverage=1.0, top_score=0.6184, gate=proceed
+
+### 20: What is the lifecycle of a loan from application to completion?
 - **Type:**  | **Difficulty:** Medium
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** None; all accounts have at least one linked customer.
-- **Generated:** Says the context lacks rows to check the relationship.
-- **Analysis:** Safe but misses a relatively simple relational answer.
-- **Retrieval:** gt_coverage=1.0, top_score=0.0960, gate=proceed_with_warning
+- **Expected:** Pending, Approved, Active, PaidOff, Defaulted, with lifecycle semantics.
+- **Generated:** Says the lifecycle is not described, and only lists general loan tracking fields.
+- **Analysis:** This is the weakest non-abstention answer. It is safe, but it misses the key lifecycle answer that the expected bundle contains.
+- **Retrieval:** gt_coverage=1.0, top_score=0.0077, gate=proceed_with_warning
 
-### 24: What transactions failed to post and why?
+### 21: What does preferred customer status mean and how is it tracked in the schema?
 - **Type:**  | **Difficulty:** Medium
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** One failed transaction with reason.
-- **Generated:** Notes the schema lacks failure-reason fields and no operational data is present.
-- **Analysis:** Accurate limitation statement, but not the expected answer.
-- **Retrieval:** gt_coverage=1.0, top_score=0.2462, gate=proceed
+- **Expected:** Preferred flag plus benefits such as waived fees, preferred rates, and priority service.
+- **Generated:** Correctly identifies preferred status as a VIP-treatment flag but omits the detailed benefits and exact schema field naming.
+- **Analysis:** Conceptually right, but incomplete.
+- **Retrieval:** gt_coverage=1.0, top_score=0.5129, gate=proceed
 
-### 25: Which ATMs are currently out of service or out of cash?
+### 22: How does the accounts table support interest tracking and what business rules govern interest?
+- **Type:**  | **Difficulty:** Medium
+- **Verdict:** CORRECT
+- **Expected:** `interest_rate`, `interest_earned`, monthly crediting, APY compounding, nullable for non-interest accounts.
+- **Generated:** Correctly covers interest-related account fields and monthly deposit interest behavior.
+- **Analysis:** Good answer overall, though it does not mention every expected nuance.
+- **Retrieval:** gt_coverage=1.0, top_score=0.6202, gate=proceed
+
+### 23: Can an account exist without any customer linked to it?
 - **Type:**  | **Difficulty:** Medium
 - **Verdict:** PARTIALLY_CORRECT
-- **Expected:** Two specific ATMs and their statuses.
-- **Generated:** States that the schema supports such a query but no operational records are available.
-- **Analysis:** Again, safe but incomplete relative to benchmark expectations.
-- **Retrieval:** gt_coverage=1.0, top_score=0.7221, gate=proceed
+- **Expected:** Schema does not force it, but business rule says no; application-level constraint.
+- **Generated:** Says the context cannot confirm whether an account can exist without a linked customer.
+- **Analysis:** The answer correctly avoids overclaiming, but it misses the business-rule distinction that the expected answer makes.
+- **Retrieval:** gt_coverage=1.0, top_score=0.3261, gate=proceed
+
+### 24: How does the schema handle failed or cancelled transactions?
+- **Type:**  | **Difficulty:** Medium
+- **Verdict:** CORRECT
+- **Expected:** Failed/cancelled statuses, audit trail, no balance change, posted finality.
+- **Generated:** Correctly explains the status handling and audit-trail framing.
+- **Analysis:** Good answer, though it could have been more explicit about failed transactions not affecting balance.
+- **Retrieval:** gt_coverage=1.0, top_score=0.2042, gate=proceed
+
+### 25: What operational states can an ATM have and what do they mean for available services?
+- **Type:**  | **Difficulty:** Easy
+- **Verdict:** PARTIALLY_CORRECT
+- **Expected:** Operational, OutOfService, OutOfCash with service implications.
+- **Generated:** Correctly lists the states but says the context lacks their operational definitions.
+- **Analysis:** Accurate at a high level but incomplete relative to the bundle’s expected explanation.
+- **Retrieval:** gt_coverage=1.0, top_score=0.4507, gate=proceed
 
 ## Anomalies & Recommendations
 
 ### Red Flags
-- The system is extremely conservative on record-level and aggregate questions: many answers are effectively abstentions despite perfect GT coverage.
-- `query_type_distribution` is `unknown`, so the dataset metadata is incomplete and prevents fine-grained type analysis.
-- `covered_sources` is empty for every question, which makes source-level interpretability weaker than it should be.
-- `semantic_verification_overlap` is often 0.0 even when answers are clearly correct, indicating the verifier is not a useful similarity proxy here.
-- Several questions with clearly answerable expected outputs were answered with “I cannot find this information,” suggesting the query graph may not be surfacing row-level facts even though the benchmark contains them.
+- **Over-conservative abstentions / hedging on answerable questions:** Q7 and Q9 were answered as “cannot find this information,” even though the evaluation bundle’s expected answers indicate the knowledge was present.
+- **Several answers are correct but incomplete:** Q12, Q17, Q18, Q20, Q21, Q23, Q25.
+- **Retrieval score noise:** Some questions have very low retrieval_quality_score despite perfect GT coverage, suggesting ranking confidence is not well calibrated.
 
 ### Recommendations
-- Improve retrieval of row-level evidence, not just schema and glossary chunks. This dataset appears to need more precise factual snippets, especially for customer/account/transaction questions.
-- Add a stronger entity-to-record retrieval path for customer names, account IDs, and date-bound facts.
-- Audit the query graph’s source ranking: many answers are grounded in broad schema chunks rather than the exact evidence needed to answer.
-- Consider a more assertive answer policy when the retrieved context contains sufficient record-level facts, especially for easy and medium questions.
-- Populate `expected_sources` and `covered_sources` for future runs to enable better traceability.
-- Improve question typing metadata, since `unknown` query types weaken downstream ablation analysis.
+- **Improve answer completion for business-rule questions:** The generator should be encouraged to synthesize from schema + glossary rather than stop at “not enough information” when the graph does contain enough cues.
+- **Tune retrieval confidence calibration:** Low retrieval scores on otherwise successful questions suggest the reranker may be underconfident or overly noisy.
+- **Review abstention behavior on answerable questions:** The quality gate appears safe, but a little too cautious for some schema-driven questions.
+- **Preserve semantic synthesis in the prompt:** The model does well on direct schema facts; it should be pushed to combine table metadata and glossary rules more assertively.
+- **Use targeted evaluation for “implicit answer” questions:** Several items require inference across schema and business glossary, not just literal lookup.
 
 ## Comparison Notes (if applicable)
-As AB-00, this is the baseline. The key baseline behavior is: excellent construction, excellent stability, perfect grounding, but conservative response behavior on many factual record-level questions. That makes this a very safe system, but not yet maximally useful for the benchmark’s more specific questions.
+As the baseline run (`AB-00`), this establishes a very strong reference point:
+- Builder is effectively perfect.
+- Retrieval is fully successful on GT coverage.
+- Answer quality is high but not maximized because some responses are overly cautious or omit expected business-rule detail.
+
+This baseline suggests the system is architecturally healthy and ready for ablation comparisons.
