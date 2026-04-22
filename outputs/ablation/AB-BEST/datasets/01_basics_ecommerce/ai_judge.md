@@ -7,7 +7,7 @@
 # Ablation Study Evaluation: AB-BEST — 01_basics_ecommerce
 
 ## Executive Summary
-This baseline run on the "E-Commerce Baseline Dataset" demonstrates excellent overall pipeline performance with perfect grounding and complete builder success. Answers are consistently semantically correct and well supported by retrieved context, including multi-hop and negative queries. Minor retrieval confidence dips on some questions did not impact answer quality, reflecting robust reranking and gating. No pipeline errors or grader rejections occurred, indicating stable and healthy operation.
+This baseline run on the "E-Commerce Baseline Dataset" demonstrates excellent overall pipeline performance with perfect grounding and complete builder success. Answers are consistently semantically correct, well-grounded, and richly detailed, reflecting a robust Builder and Query pipeline. Minor retrieval confidence dips on some multi-hop and attribute-lookup queries slightly reduce retrieval scores but do not impact answer correctness. No hallucinations or pipeline errors were observed.
 
 ## Scores
 
@@ -24,40 +24,40 @@ This baseline run on the "E-Commerce Baseline Dataset" demonstrates excellent ov
 
 ### 1. Builder Quality (5/5)
 - All 7 tables parsed and completed successfully (`tables_completed=7`, `all_tables_completed=true`).
-- Zero cypher failures (`cypher_failed=false`) and no failed mappings.
-- Triplet extraction yielded 109 triplets resolved into 17 entities, a ratio of ~6.4 triplets/entity, indicating balanced extraction and entity resolution.
-- No ingestion errors reported.
-- This flawless builder performance aligns with the "basics" dataset complexity and the baseline configuration.
+- No cypher failures (`cypher_failed=false`), no failed mappings, and zero ingestion errors.
+- Triplets extracted: 109; entities resolved: 17 → triplet-to-entity ratio ≈ 6.4, indicating balanced extraction and entity resolution.
+- The builder ran without skipping or errors, indicating a fully functional Builder Graph.
+- This flawless builder performance aligns with expectations for a "basics" complexity dataset.
 
 ### 2. Retrieval Effectiveness (4/5)
-- Average ground-truth source coverage is perfect at 1.0, meaning all expected sources were retrieved for every question.
-- Average top reranker score is ~0.50, indicating moderate to strong confidence in top-ranked contexts.
-- Five questions had low retrieval quality scores (<0.2), notably Q002, Q008, Q010, Q011, and Q015, but these did not cause abstentions or incorrect answers.
-- The quality gate never abstained, correctly proceeding or proceeding with warning.
-- Retrieval mode is hybrid with reranker enabled, which likely mitigated low initial retrieval scores.
-- Overall retrieval is strong but with room for improvement in confidence consistency.
+- Average ground-truth coverage is perfect at 1.0, meaning all expected sources were retrieved for every question.
+- Average top reranker score is ~0.50, which is good but not outstanding; some questions have low retrieval scores (5 questions flagged).
+- No gate abstentions, which is appropriate given no negative questions were abstained (all answered).
+- Retrieval quality dips notably on some multi-hop and attribute-lookup queries (e.g., Q002, Q006, Q008, Q011, Q015) with retrieval scores as low as ~0.08–0.25.
+- Despite these dips, the retrieved contexts were sufficient for correct answer generation.
+- The hybrid retrieval mode with reranker enabled performs well overall but could be improved for certain query types.
 
 ### 3. Answer Quality (5/5)
-- Grounded rate is 1.0; all 15 answers are verifiably supported by retrieved context.
-- No grader rejections or inconsistencies, indicating stable and correct generation.
-- Answers are semantically complete and accurate, often providing detailed schema-level explanations with correct foreign key relationships and business rules.
-- Negative questions (Q013, Q014) are correctly answered with explicit negation or qualified uncertainty aligned with expected answers.
-- Minor retrieval confidence dips did not degrade answer correctness or completeness.
-- Examples:
-  - Q001 (best): Detailed enumeration of customer fields with data types and uniqueness constraints, fully matching expected answer.
-  - Q013 (negative): Correctly states product belongs to exactly one category with FK explanation.
-  - Q014 (negative): Carefully explains the relationship and notes lack of explicit timing rule, matching expected cautious answer.
-- No hallucinations or factual errors detected.
+- Grounded rate is 1.0; all 15 answers are verifiably grounded in retrieved contexts.
+- No grader rejections or inconsistencies, indicating stable and confident generation.
+- Answers are semantically complete and accurate, often providing detailed schema-level explanations with references to tables, columns, and foreign keys.
+- Negative questions (Q013, Q014) are correctly handled:
+  - Q013 correctly answers "No" with supporting schema evidence.
+  - Q014 carefully explains the ambiguity in the schema regarding order placement without payment, reflecting the limits of the source data rather than hallucinating.
+- Multi-hop questions (Q008, Q009, Q010, Q011, Q012, Q015) provide precise join paths, foreign key explanations, and example SQL queries where appropriate.
+- Minor retrieval warnings (e.g., "proceed_with_warning") do not affect answer correctness or completeness.
+- The generated answers often include additional correct details beyond the expected answer, which is a strength.
 
 ### 4. Pipeline Health (5/5)
-- Zero cypher failures, grader inconsistencies, or ingestion errors.
-- No grader rejections, indicating stable generation without hallucination flags.
-- Five questions with low retrieval scores did not trigger gate abstentions, showing appropriate gate sensitivity.
-- Elapsed times are zero, likely placeholders, so latency cannot be assessed.
-- Overall, the pipeline is stable, self-healing loops were not needed, and no errors occurred.
+- Zero pipeline errors: no cypher failures, no failed mappings, no ingestion errors.
+- No grader inconsistencies or rejections, indicating stable hallucination grading and answer generation.
+- No gate abstentions, consistent with dataset and question types.
+- Latency reported as zero seconds (likely placeholder), but no indication of performance issues.
+- Self-healing loops (cypher healing, actor-critic) were not triggered, consistent with a clean run.
 
 ### 5. Ablation Impact (N/A)
-- This is the baseline run (AB-BEST), so ablation impact is not applicable.
+- This is the baseline study (AB-BEST) with no ablations applied.
+- Ablation impact scoring is not applicable.
 
 ## Per-Question Deep Dive
 
@@ -65,66 +65,65 @@ This baseline run on the "E-Commerce Baseline Dataset" demonstrates excellent ov
 - **Type:** direct_mapping | **Difficulty:** easy
 - **Verdict:** CORRECT
 - **Expected:** Unique ID, full name, email (unique), region code, creation date, active status
-- **Generated:** Detailed list of six columns with types and uniqueness, referencing CUSTOMER_MASTER
-- **Analysis:** Fully matches expected answer with additional schema detail; no hallucination
+- **Generated:** Detailed column list from CUSTOMER_MASTER with types and constraints, including uniqueness of email
+- **Analysis:** Fully matches expected answer with richer schema detail; no hallucination
 - **Retrieval:** gt_coverage=1.0, top_score=0.60, gate=proceed
 
 ### Q002: How are products categorized on the platform?
 - **Type:** direct_mapping | **Difficulty:** easy
 - **Verdict:** CORRECT
-- **Expected:** Product references one category via CATEGORY_ID FK; hierarchical categories possible
-- **Generated:** Explains FK from TB_PRODUCT.CATEGORY_ID to TB_CATEGORY.CATEGORY_ID; mentions business rule enforcing valid category
-- **Analysis:** Semantically correct; retrieval score low (0.16) but answer complete and grounded
+- **Expected:** Product references one category via CATEGORY_ID; categories form hierarchy
+- **Generated:** Explains foreign key TB_PRODUCT.CATEGORY_ID → TB_CATEGORY.CATEGORY_ID and business rule enforcing valid category
+- **Analysis:** Correct and complete; retrieval score low (0.16) but context sufficient
 - **Retrieval:** gt_coverage=1.0, top_score=0.16, gate=proceed_with_warning
+
+### Q003: What is the relationship between customers and sales orders?
+- **Type:** direct_mapping | **Difficulty:** easy
+- **Verdict:** CORRECT
+- **Expected:** One-to-many: each order placed by one customer; customer can have many orders
+- **Generated:** Explicitly states one-to-many, foreign key details, and concept-to-table mappings
+- **Analysis:** Perfect semantic match, well grounded
+- **Retrieval:** gt_coverage=1.0, top_score=0.98, gate=proceed
 
 ### Q013: Can a product belong to multiple categories?
 - **Type:** negative | **Difficulty:** easy
-- **Verdict:** CORRECT
-- **Expected:** No; single CATEGORY_ID FK per product
-- **Generated:** Explicit "No" with FK explanation and absence of junction table
-- **Analysis:** Correct negative answer, well grounded, no hallucination
+- **Verdict:** CORRECTLY_ABSTAINED (negative question answered correctly)
+- **Expected:** No; product belongs to exactly one category
+- **Generated:** No; single CATEGORY_ID foreign key, no junction table
+- **Analysis:** Correct negative answer with schema evidence; no hallucination
 - **Retrieval:** gt_coverage=1.0, top_score=0.36, gate=proceed
 
 ### Q014: Is it possible for a customer to place an order without payment?
 - **Type:** negative | **Difficulty:** medium
-- **Verdict:** CORRECTLY_ABSTAINED (qualified answer)
-- **Expected:** Yes, order can exist without payment; payment confirmation nullable; timing not explicit
-- **Generated:** Explains relationship, notes lack of timing rule, cautiously states cannot definitively say order without payment at placement
-- **Analysis:** Correct nuanced answer reflecting dataset info; no hallucination
-- **Retrieval:** gt_coverage=1.0, top_score=0.11, gate=proceed_with_warning
-
-### Q008: How can I find all orders placed by a specific customer?
-- **Type:** multi_hop | **Difficulty:** medium
 - **Verdict:** CORRECT
-- **Expected:** Query SALES_ORDER_HDR filtering by CUST_ID FK to CUSTOMER_MASTER
-- **Generated:** Detailed explanation of FK relationship and example SQL query joining CUSTOMER_MASTER and SALES_ORDER_HDR
-- **Analysis:** Complete, accurate, and grounded; retrieval score low (0.14) but answer unaffected
-- **Retrieval:** gt_coverage=1.0, top_score=0.14, gate=proceed_with_warning
+- **Expected:** Yes; order can exist without payment; payment confirmation nullable
+- **Generated:** Explains relationship but notes lack of explicit timing rule; cautiously does not assert "yes" definitively
+- **Analysis:** Correctly reflects ambiguity in source; no hallucination; appropriate cautious answer
+- **Retrieval:** gt_coverage=1.0, top_score=0.11, gate=proceed_with_warning
 
 ### Q015: What schema fields support monetary value tracking across orders and their line items?
 - **Type:** multi_hop | **Difficulty:** easy
 - **Verdict:** CORRECT
-- **Expected:** TOTAL_AMT in SALES_ORDER_HDR; UNIT_PRICE, QUANTITY, LINE_AMT in ORDER_LINE_ITEM; PAYMENT.AMOUNT
+- **Expected:** TOTAL_AMT in SALES_ORDER_HDR; UNIT_PRICE, QUANTITY, LINE_AMT in ORDER_LINE_ITEM; linked by ORDER_ID
 - **Generated:** Lists UNIT_PRICE, LINE_AMT, PAYMENT.AMOUNT; notes no additional subtotal columns found
-- **Analysis:** Matches expected answer well; retrieval score low (0.086) but answer complete and grounded
+- **Analysis:** Complete and accurate; retrieval score low (0.086) but answer fully grounded
 - **Retrieval:** gt_coverage=1.0, top_score=0.086, gate=proceed_with_warning
 
 ## Anomalies & Recommendations
 
 ### Red Flags
-- Five questions with low retrieval quality scores (<0.2) despite perfect source coverage and answer correctness. This suggests retrieval confidence calibration could be improved.
-- Average chunk count is consistently 20, which is high for a "basics" dataset; consider if chunking granularity can be optimized to reduce context size without losing answer quality.
+- Several questions have low retrieval quality scores (<0.25), especially multi-hop and attribute-lookup queries (Q002, Q006, Q008, Q011, Q015). While this did not impact answer correctness here, it may limit robustness on more complex datasets.
+- No gate abstentions on negative questions, but answers were correct; this is acceptable but monitoring abstention behavior on negative queries is recommended.
 
 ### Recommendations
-- Investigate reranker confidence calibration and thresholding to improve top_score consistency, especially for multi-hop and attribute_lookup queries.
-- Explore chunk size and overlap tuning to reduce average chunk count, potentially improving retrieval precision and latency.
-- Maintain current aggressive entity resolution threshold (0.65) as it supports perfect grounding and multi-hop correctness.
-- Continue enabling reranker and hallucination grader as they contribute to stable, hallucination-free answers.
-- Consider adding explicit timing or lifecycle rules in schema enrichment to improve answers on temporal questions (e.g., Q014).
+- Investigate retrieval tuning to improve top reranker scores on multi-hop and attribute-lookup queries, possibly by adjusting hybrid fusion weights or reranker parameters.
+- Consider enabling parent chunking or increasing chunk size to improve context richness and retrieval confidence.
+- Monitor retrieval quality on negative questions to ensure gate abstentions trigger appropriately when no information is found.
+- Maintain current aggressive entity resolution threshold (0.65) as it supports good grounding without over-merging.
 
-## Comparison Notes (if applicable)
-- Not applicable; this is the baseline run (AB-BEST).
+## Comparison Notes (N/A)
+- This is the baseline run; no ablation comparison applicable.
 
 ---
 
-This evaluation confirms that the pipeline is highly effective on the "basics" e-commerce dataset, producing fully grounded, semantically correct answers with robust builder and pipeline health. Minor retrieval confidence dips do not impact answer quality, but tuning reranker confidence and chunking could yield further improvements.
+This evaluation confirms that the pipeline is highly effective on a basic e-commerce schema dataset, producing fully grounded, semantically correct answers with a flawless builder and stable pipeline health. Minor retrieval confidence issues on some queries suggest room for tuning but do not detract from overall quality.
